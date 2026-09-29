@@ -27,4 +27,13 @@ class TranslationPolicyTest {
         assertTrue(TranslationPolicy.systemInstruction(TranslationTarget.ENGLISH).contains("casual English"))
         assertTrue(TranslationPolicy.systemInstruction(TranslationTarget.RUSSIAN).contains("casual Russian"))
     }
+
+    @Test
+    fun englishInstructionPreservesEveryCountryInNationalityLists() {
+        val instruction = TranslationPolicy.systemInstruction(TranslationTarget.ENGLISH)
+
+        assertTrue(instruction.contains("Keep every country and keep first person."))
+        assertTrue(instruction.contains("Tôi có quốc tịch Việt và Nga."))
+        assertTrue(instruction.contains("I have both Vietnamese and Russian citizenship."))
+    }
 }

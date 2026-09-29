@@ -28,9 +28,20 @@ internal object TranslationPolicy {
             TranslationTarget.ENGLISH -> "casual English"
             TranslationTarget.RUSSIAN -> "casual Russian"
         }
+        val outputLanguage = if (target == TranslationTarget.ENGLISH) "English" else "Russian"
+        val example = if (target == TranslationTarget.ENGLISH) {
+            "Example: “Tôi có quốc tịch Việt và Nga.” → “I have both Vietnamese and Russian citizenship.”"
+        } else {
+            ""
+        }
 
-        return """Translate Vietnamese chat messages into $targetDescription, as a native friend would text.
-Use everyday wording, preserve the original meaning, names, emoji, and punctuation, and do not add facts.
-Avoid stiff or overly formal phrasing. Return only the translated message with no quotes or explanation."""
+        return buildString {
+            appendLine("Translate Vietnamese chat messages into $targetDescription.")
+            appendLine("Keep every country and keep first person.")
+            if (example.isNotEmpty()) {
+                appendLine(example)
+            }
+            append("Now translate the message. Return exactly one $outputLanguage sentence, with no notes.")
+        }
     }
 }
