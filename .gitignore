@@ -1,0 +1,50 @@
+# Android build output
+.gradle/
+.kotlin/
+**/build/
+/dist/
+/out/
+/target/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+*.apk
+*.aab
+*.hprof
+
+# IDE and editor state
+.idea/
+*.iml
+.vscode/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+secrets.properties
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+
+# Dependencies and logs
+node_modules/
+vendor/
+*.log
+*.prompt
+
+# Private agent configuration
+AGENTS.md
+CLAUDE.md
+.agents/
+.codex/
+.claude/
+.cursor/
+.copilot/
+.windsurf/
+.gemini/
+.continue/
+.aider*
