@@ -39,6 +39,16 @@ class TranslationPolicyTest {
     }
 
     @Test
+    fun englishRewriteStaysCasualBriefAndDoesNotContinueTheConversation() {
+        val instruction = TranslationPolicy.systemInstruction(TranslationTarget.ENGLISH)
+
+        assertTrue(instruction.contains("Keep the rewrite close to the original's length."))
+        assertTrue(instruction.contains("slang only when it fits the original"))
+        assertTrue(instruction.contains("Do not answer or continue the conversation."))
+        assertTrue(instruction.contains("Do not add reactions, feedback, alternatives, or questions."))
+    }
+
+    @Test
     fun naturalizationInputKeepsTheSourceAndMachineDraftInOrder() {
         assertEquals(
             "Vietnamese original:\nTôi đang tới.\nEnglish draft from Google ML Kit:\nI'm on my way.",
