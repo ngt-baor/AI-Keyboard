@@ -34,5 +34,6 @@ android {
 
 dependencies {
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.17.1")
+    implementation("com.google.mlkit:translate:17.0.3")
     testImplementation("junit:junit:4.13.2")
 }

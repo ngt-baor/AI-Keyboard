@@ -75,9 +75,9 @@ class MainActivity : Activity() {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
         })
 
-        content.addView(sectionTitle("2. Tải mô hình dịch"))
+        content.addView(sectionTitle("2. Tùy chọn làm câu dịch tự nhiên hơn"))
         content.addView(TextView(this).apply {
-            text = "Tải một lần khoảng ${ModelRepository.MODEL_SIZE_LABEL}. Nội dung tin nhắn được xử lý trên điện thoại; chỉ tệp mô hình được tải qua mạng."
+            text = "Google ML Kit dịch nền trên điện thoại; gói ngôn ngữ được tải từ Google lần đầu qua Wi-Fi. Tải thêm mô hình ${ModelRepository.MODEL_SIZE_LABEL} để Qwen chỉnh câu tự nhiên hơn. Tin nhắn không được gửi lên máy chủ."
             textSize = 14f
             setTextColor(0xFF45515C.toInt())
         })
@@ -99,13 +99,13 @@ class MainActivity : Activity() {
             bottomMargin = dp(8)
         })
 
-        downloadButton = actionButton("Tải mô hình") { startModelDownload() }
+        downloadButton = actionButton("Tải mô hình chỉnh câu") { startModelDownload() }
         content.addView(downloadButton)
         deleteButton = actionButton("Xóa mô hình khỏi điện thoại") { deleteModel() }
         content.addView(deleteButton)
 
         content.addView(TextView(this).apply {
-            text = "Sau khi tải xong, có thể dịch khi không có mạng. Bản dịch chỉ được chèn vào ô chat sau khi bạn bấm Dùng; ứng dụng không tự gửi tin."
+            text = "Bản dịch nền cần kết nối mạng khi tải gói ngôn ngữ lần đầu; sau đó ML Kit và Qwen đều xử lý trên điện thoại. Kết quả chỉ được chèn vào ô chat sau khi bạn bấm Dùng; ứng dụng không tự gửi tin."
             textSize = 13f
             setTextColor(0xFF66727D.toInt())
             setPadding(0, dp(20), 0, 0)
@@ -125,11 +125,11 @@ class MainActivity : Activity() {
             mainHandler.post {
                 if (destroyed || downloadHandle != null) return@post
                 statusText.text = if (ready) {
-                    "Mô hình đã sẵn sàng. Dịch được ngoại tuyến."
+                    "Mô hình chỉnh câu đã sẵn sàng. Cả hai bước đều chạy trên điện thoại."
                 } else {
-                    "Chưa có mô hình hợp lệ trên điện thoại."
+                    "Chưa có mô hình chỉnh câu. Vẫn dịch được bằng Google ML Kit."
                 }
-                downloadButton.text = if (ready) "Tải lại mô hình" else "Tải mô hình (${ModelRepository.MODEL_SIZE_LABEL})"
+                downloadButton.text = if (ready) "Tải lại mô hình chỉnh câu" else "Tải mô hình chỉnh câu (${ModelRepository.MODEL_SIZE_LABEL})"
                 deleteButton.isEnabled = ready
             }
         }

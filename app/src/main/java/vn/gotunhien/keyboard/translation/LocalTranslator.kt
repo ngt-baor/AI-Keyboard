@@ -3,6 +3,7 @@ package vn.gotunhien.keyboard.translation
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.google.android.gms.tasks.Tasks
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
@@ -12,6 +13,11 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.ThinkingConfig
+import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.Translator
+import com.google.mlkit.nl.translate.TranslatorOptions
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -20,6 +26,7 @@ internal class LocalTranslator(context: Context) {
     private val repository = ModelRepository(appContext)
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val mlKitTranslators = mutableMapOf<TranslationTarget, Translator>()
 
     @Volatile
     private var engine: Engine? = null
@@ -27,21 +34,17 @@ internal class LocalTranslator(context: Context) {
     fun translate(
         sourceText: String,
         target: TranslationTarget,
-        onComplete: (Result<String>) -> Unit,
+        onComplete: (Result<TranslationCandidates>) -> Unit,
     ) {
         executor.execute {
             val result = try {
-                check(repository.hasVerifiedModel())
-                val activeEngine = engine ?: createEngine().also { engine = it }
                 Result.success(
-                    activeEngine.createConversation(
-                        ConversationConfig(
-                            systemInstruction = Contents.of(TranslationPolicy.systemInstruction(target)),
-                            samplerConfig = SamplerConfig(topK = 1, topP = 0.85, temperature = 0.2),
-                            maxOutputToken = MAX_OUTPUT_TOKENS,
-                            thinkingConfig = ThinkingConfig(enableThinking = false, thinkingTokenBudget = 0),
-                        ),
-                    ).use { conversation -> extractText(conversation, sourceText) },
+                    TranslationPipeline.translate(
+                        sourceText = sourceText,
+                        translateBase = { text -> translateWithMlKit(text, target) },
+                        shouldNaturalize = repository::hasVerifiedModel,
+                        naturalize = { source, draft -> naturalize(source, draft, target) },
+                    ),
                 )
             } catch (failure: Exception) {
                 Result.failure(failure)
@@ -54,6 +57,8 @@ internal class LocalTranslator(context: Context) {
 
     fun close() {
         executor.execute {
+            mlKitTranslators.values.forEach(Translator::close)
+            mlKitTranslators.clear()
             engine?.close()
             engine = null
         }
@@ -85,6 +90,37 @@ internal class LocalTranslator(context: Context) {
                 cacheDir = appContext.cacheDir.absolutePath,
             ),
         ).apply { initialize() }
+    }
+
+    private fun translateWithMlKit(sourceText: String, target: TranslationTarget): String {
+        val targetLanguage = when (target) {
+            TranslationTarget.ENGLISH -> TranslateLanguage.ENGLISH
+            TranslationTarget.RUSSIAN -> TranslateLanguage.RUSSIAN
+        }
+        val translator = mlKitTranslators.getOrPut(target) {
+            Translation.getClient(
+                TranslatorOptions.Builder()
+                    .setSourceLanguage(TranslateLanguage.VIETNAMESE)
+                    .setTargetLanguage(targetLanguage)
+                    .build(),
+            )
+        }
+        Tasks.await(translator.downloadModelIfNeeded(DownloadConditions.Builder().requireWifi().build()))
+        return Tasks.await(translator.translate(sourceText)).trim()
+    }
+
+    private fun naturalize(sourceText: String, baseTranslation: String, target: TranslationTarget): String {
+        val activeEngine = engine ?: createEngine().also { engine = it }
+        return activeEngine.createConversation(
+            ConversationConfig(
+                systemInstruction = Contents.of(TranslationPolicy.systemInstruction(target)),
+                samplerConfig = SamplerConfig(topK = 1, topP = 0.85, temperature = 0.2),
+                maxOutputToken = MAX_OUTPUT_TOKENS,
+                thinkingConfig = ThinkingConfig(enableThinking = false, thinkingTokenBudget = 0),
+            ),
+        ).use { conversation ->
+            extractText(conversation, TranslationPolicy.naturalizationInput(target, sourceText, baseTranslation))
+        }
     }
 
     private fun extractText(conversation: Conversation, sourceText: String): String {

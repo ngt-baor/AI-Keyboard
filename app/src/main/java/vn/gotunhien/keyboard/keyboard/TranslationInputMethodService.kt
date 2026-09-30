@@ -155,21 +155,58 @@ class TranslationInputMethodService : InputMethodService() {
         languagePicker.addView(targetPill, LinearLayout.LayoutParams(dp(106), dp(38)))
         languages.addView(languagePicker, FrameLayout.LayoutParams(-2, -1, Gravity.CENTER))
 
-        root.addView(TextView(this).apply {
-            text = preview?.translatedText ?: statusMessage ?: "Nhập vào đây để dịch"
-            textSize = 16f
-            setTextColor(if (preview != null || statusMessage != null) Color.rgb(48, 55, 64) else Color.rgb(117, 120, 125))
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(5), dp(14), dp(5))
+        val selectedPreview = preview
+        val previewCard = FrameLayout(this).apply {
             background = GradientDrawable().apply {
                 setColor(Color.WHITE)
                 setStroke(dp(1), Color.rgb(37, 93, 183))
                 cornerRadius = dp(28).toFloat()
             }
-            contentDescription = if (preview == null) "Trạng thái dịch" else "Bản xem trước bản dịch"
-        }, LinearLayout.LayoutParams(-1, dp(38)).apply {
+            contentDescription = when {
+                selectedPreview == null -> "Trạng thái dịch"
+                selectedPreview.showingNaturalized -> "Gợi ý tự nhiên hóa bằng mô hình Qwen. Chạm để xem bản dịch Google ML Kit."
+                else -> "Bản dịch Google ML Kit. Chạm để xem gợi ý Qwen."
+            }
+            isClickable = selectedPreview?.hasAlternative == true
+            isFocusable = isClickable
+            if (isClickable) {
+                foreground = RippleDrawable(
+                    ColorStateList.valueOf(Color.argb(48, 50, 105, 180)),
+                    null,
+                    roundedBackground(Color.WHITE, 28),
+                )
+                setOnClickListener { toggleTranslationCandidate() }
+            }
+        }
+        if (selectedPreview != null) {
+            previewCard.addView(TextView(this).apply {
+                text = if (selectedPreview.showingNaturalized) {
+                    "Gợi ý Qwen · chạm để xem bản Google"
+                } else if (selectedPreview.hasAlternative) {
+                    "Google ML Kit · chạm để xem gợi ý Qwen"
+                } else {
+                    "Google ML Kit"
+                }
+                textSize = 8f
+                setTextColor(Color.rgb(94, 105, 119))
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }, FrameLayout.LayoutParams(-1, dp(11), Gravity.TOP).apply {
+                marginStart = dp(16)
+                marginEnd = dp(16)
+                topMargin = dp(4)
+            })
+        }
+        previewCard.addView(TextView(this).apply {
+            text = selectedPreview?.selectedTranslation ?: statusMessage ?: "Nhập vào đây để dịch"
+            textSize = 16f
+            setTextColor(if (selectedPreview != null || statusMessage != null) Color.rgb(48, 55, 64) else Color.rgb(117, 120, 125))
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(if (selectedPreview == null) 5 else 12), dp(14), dp(3))
+        }, FrameLayout.LayoutParams(-1, -1))
+        root.addView(previewCard, LinearLayout.LayoutParams(-1, dp(43)).apply {
             topMargin = dp(14)
             bottomMargin = dp(13)
             marginStart = dp(3)
@@ -199,7 +236,7 @@ class TranslationInputMethodService : InputMethodService() {
             textSize = 18f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            contentDescription = if (translating) "Đang dịch bản nháp" else "Dịch bản nháp"
+            contentDescription = if (translating) "Translating with Google" else "Translate with Google"
             isEnabled = !translating
             isClickable = !translating
             isFocusable = true
@@ -215,7 +252,11 @@ class TranslationInputMethodService : InputMethodService() {
 
         val useTranslation = ImageView(this).apply {
             setImageResource(R.drawable.ic_clipboard)
-            contentDescription = "Dùng bản dịch trong ô chat"
+            contentDescription = if (preview?.showingNaturalized == true) {
+                "Dùng gợi ý Qwen trong ô chat"
+            } else {
+                "Dùng bản dịch Google ML Kit trong ô chat"
+            }
             isEnabled = preview != null && !translating
             isClickable = isEnabled
             isFocusable = true
@@ -340,7 +381,7 @@ class TranslationInputMethodService : InputMethodService() {
         }
 
         preview = null
-        statusMessage = "Model khởi tạo lần đầu có thể mất vài giây…"
+        statusMessage = "Đang dịch bằng Google ML Kit; có thể chỉnh câu tự nhiên hơn nếu mô hình đã tải…"
         translating = true
         val requestId = ++translationRequestId
         val requestedTarget = target
@@ -353,16 +394,28 @@ class TranslationInputMethodService : InputMethodService() {
                 statusMessage = "Bản nháp đã thay đổi trong lúc dịch. Hãy bấm Dịch lại."
                 preview = null
             } else {
-                result.onSuccess { translated ->
-                    if (TranslationPolicy.canApply(latestDraft.orEmpty(), source, translated)) {
-                        preview = TranslationPreview(source, translated)
-                        statusMessage = "Xem lại rồi bấm Dùng để thay nội dung trong ô chat."
+                result.onSuccess { candidates ->
+                    val baseIsUsable = TranslationPolicy.canApply(
+                        latestDraft.orEmpty(),
+                        source,
+                        candidates.baseTranslation,
+                    )
+                    if (baseIsUsable) {
+                        val naturalized = candidates.naturalizedTranslation.takeIf {
+                            TranslationPolicy.canApply(latestDraft.orEmpty(), source, it)
+                        } ?: candidates.baseTranslation
+                        preview = TranslationPreview(source, candidates.baseTranslation, naturalized)
+                        statusMessage = if (naturalized == candidates.baseTranslation) {
+                            "Bản Google ML Kit sẵn sàng. Bấm nút clipboard để dùng trong ô chat."
+                        } else {
+                            "Bản Google ML Kit đang hiển thị. Chạm vào khung để xem gợi ý Qwen."
+                        }
                     } else {
                         statusMessage = "Không nhận được bản dịch hợp lệ. Nội dung gốc vẫn được giữ."
                         preview = null
                     }
                 }.onFailure {
-                    statusMessage = "Chưa dịch được. Hãy kiểm tra mô hình đã tải xong và thử lại."
+                    statusMessage = "Chưa tải được gói dịch Google ML Kit. Kết nối Wi-Fi rồi thử lại; bản nháp vẫn được giữ."
                     preview = null
                 }
             }
@@ -380,7 +433,7 @@ class TranslationInputMethodService : InputMethodService() {
         }
         val inputConnection = currentInputConnection ?: return
         val currentText = extractFullDraft()?.text?.toString()
-        if (!TranslationPolicy.canApply(currentText.orEmpty(), selectedPreview.source, selectedPreview.translatedText)) {
+        if (!TranslationPolicy.canApply(currentText.orEmpty(), selectedPreview.source, selectedPreview.selectedTranslation)) {
             statusMessage = "Bản nháp đã đổi sau khi dịch. Nội dung được giữ nguyên; hãy dịch lại."
             preview = null
             redraw()
@@ -390,7 +443,7 @@ class TranslationInputMethodService : InputMethodService() {
         inputConnection.beginBatchEdit()
         val applied = try {
             inputConnection.setSelection(0, selectedPreview.source.length) &&
-                inputConnection.commitText(selectedPreview.translatedText, 1)
+                inputConnection.commitText(selectedPreview.selectedTranslation, 1)
         } finally {
             inputConnection.endBatchEdit()
         }
@@ -399,6 +452,18 @@ class TranslationInputMethodService : InputMethodService() {
             statusMessage = "Đã thay bản nháp. Bạn tự gửi tin trong ứng dụng chat."
         } else {
             statusMessage = "Không thể cập nhật ô chat; nội dung chưa được gửi."
+        }
+        redraw()
+    }
+
+    private fun toggleTranslationCandidate() {
+        val current = preview ?: return
+        if (!current.hasAlternative) return
+        preview = current.copy(showingNaturalized = !current.showingNaturalized)
+        statusMessage = if (preview?.showingNaturalized == true) {
+            "Đang xem gợi ý Qwen. Chạm khung để quay lại bản Google ML Kit."
+        } else {
+            "Đang xem bản Google ML Kit. Chạm khung để xem gợi ý Qwen."
         }
         redraw()
     }
@@ -767,6 +832,14 @@ class TranslationInputMethodService : InputMethodService() {
 
     private data class TranslationPreview(
         val source: String,
-        val translatedText: String,
-    )
+        val baseTranslation: String,
+        val naturalizedTranslation: String,
+        val showingNaturalized: Boolean = false,
+    ) {
+        val hasAlternative: Boolean
+            get() = naturalizedTranslation != baseTranslation
+
+        val selectedTranslation: String
+            get() = if (showingNaturalized) naturalizedTranslation else baseTranslation
+    }
 }
